@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { createReservationHandler, validateReservation, type HandlerDependencies } from '../../supabase/functions/_shared/reserve-handler'
 
 const valid = {request_id:'12345678-1234-4234-8234-123456789abc',date:'2026-12-01',time:'14:00',guests:2,name:'Cliente de pruebas',phone:'+34 600 000 001',notes:'',privacy_accepted:true,privacy_version:1,token:'token-de-prueba'}
-const defaults = ():HandlerDependencies=>({origins:['https://restaurant.example.invalid'],secret:'test-secret',salt:'test-only-salt-with-more-than-32-characters',verify:async()=>({success:true,action:'reserve',hostname:'restaurant.example.invalid'}),save:async()=>({error:null})})
+const defaults = ():HandlerDependencies=>({origins:['https://restaurant.example.invalid'],secret:'test-secret',salt:'test-only-salt-with-more-than-32-characters',verify:async()=>({success:true,action:'reserve',hostname:'restaurant.example.invalid'}),registerAttempt:async()=>({allowed:true,retry_after:0}),save:async()=>({error:null})})
 const request = (body:unknown=valid,origin='https://restaurant.example.invalid')=>new Request('https://edge.example.invalid/reserve',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify(body)})
 
 test('servidor: formato, comensales, teléfono, aceptación y campo antiautomatismos',()=>{
@@ -39,3 +39,14 @@ for(const [error,status] of [['E_FULL',409],['E_DATE',409],['E_CLOSED',409],['E_
     expect((await createReservationHandler(deps)(request())).status).toBe(status)
   })
 }
+test('servidor: registerAttempt rechaza cuando allowed:false y no llama a save',async()=>{
+  const deps=defaults()
+  let saveCalled=false
+  deps.registerAttempt=async()=>({allowed:false,retry_after:60})
+  deps.save=async()=>{saveCalled=true;return {error:null}}
+  const response=await createReservationHandler(deps)(request())
+  expect(response.status).toBe(429)
+  expect(await response.text()).toContain('Espera un momento')
+  expect(response.headers.get('Retry-After')).toBe('60')
+  expect(saveCalled).toBe(false)
+})

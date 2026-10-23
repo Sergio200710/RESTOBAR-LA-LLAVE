@@ -66,11 +66,12 @@ export default function Admin() {
         } catch {setError('No se pudo contactar con el servicio. Inténtalo más tarde.')} finally{setBusy(false)}
       }}><label>Correo electrónico<input name="email" type="email" autoComplete="username" required maxLength={254} /></label><label>Contraseña<input name="password" type="password" autoComplete="current-password" required maxLength={128} /></label><button className="button" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form>
       <details className="reset-password"><summary>He olvidado mi contraseña</summary><form onSubmit={async event=>{
-        event.preventDefault();setBusy(true);setError('');const values=new FormData(event.currentTarget)
+        event.preventDefault();setBusy(true);setError('');setMessage('');const values=new FormData(event.currentTarget)
         try {
-          await client.auth.resetPasswordForEmail(String(values.get('recovery-email')).trim(),{redirectTo:`${window.location.origin}/admin/recuperar`})
+          const {error:recoveryError}=await client.auth.resetPasswordForEmail(String(values.get('recovery-email')).trim(),{redirectTo:`${window.location.origin}/admin/recuperar`})
+          if(recoveryError){setError('No se pudo tramitar la recuperación. Inténtalo más tarde.');return}
           setMessage('Si el correo corresponde a una cuenta válida, recibirás un enlace para cambiar tu contraseña. Revisa también el correo no deseado.')
-        }catch{setError('No se pudo enviar la petición. Inténtalo más tarde.')}finally{setBusy(false)}
+        }catch{setError('No se pudo tramitar la recuperación. Inténtalo más tarde.')}finally{setBusy(false)}
       }}><label>Correo de recuperación<input name="recovery-email" type="email" autoComplete="email" maxLength={254} required /></label><button className="button secondary" disabled={busy}>Solicitar enlace seguro</button></form></details>
     </>}
     <Link className="text-link" to="/">Volver a la web</Link></div></div>

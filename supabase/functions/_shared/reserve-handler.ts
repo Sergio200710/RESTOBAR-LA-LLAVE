@@ -22,6 +22,7 @@ export interface HandlerDependencies {
   secret: string
   salt: string
   verify: (token: string) => Promise<{ success: boolean; hostname?: string; action?: string }>
+  registerAttempt: (data: Omit<ReservationInput, 'token' | 'website'>, networkHash: string, contactHash: string) => Promise<{ allowed: boolean; retry_after: number }>
   save: (data: Omit<ReservationInput, 'token' | 'website'>, networkHash: string, contactHash: string) => Promise<{ error: { message: string } | null }>
 }
 
@@ -30,7 +31,7 @@ export function createReservationHandler(deps: HandlerDependencies) {
     const origin = request.headers.get('origin') ?? ''
     const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Vary': 'Origin',
       ...(deps.origins.includes(origin) ? { 'Access-Control-Allow-Origin': origin } : {}) }
-    const reply = (status: number, message: string) => Response.json({ message }, { status, headers })
+    const reply = (status: number, message: string, extraHeaders: Record<string,string> = {}) => Response.json({ message }, { status, headers: { ...headers, ...extraHeaders } })
     if (!deps.origins.includes(origin)) return reply(403, 'No se permite esta solicitud.')
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, apikey', 'Access-Control-Max-Age': '600' } })
     if (request.method !== 'POST') return reply(405, 'Utiliza el formulario de reservas.')
@@ -62,7 +63,12 @@ export function createReservationHandler(deps: HandlerDependencies) {
       const network = request.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() || 'unknown'
       const { token: _token, website: _website, ...data } = input
       data.phone = data.phone.replace(/[\s().-]/g, '')
-      const result = await deps.save(data, await hash(`ip:${network}`), await hash(`phone:${data.phone}`))
+      const networkHash = await hash(`ip:${network}`), contactHash = await hash(`phone:${data.phone}`)
+      // Await an independent, committed RPC. Do NOT wrap registration + booking
+      // in one SQL function/transaction: the booking may intentionally roll back.
+      const attempt = await deps.registerAttempt(data, networkHash, contactHash)
+      if (!attempt.allowed) return reply(429, 'Has enviado varias solicitudes. Espera un momento antes de intentarlo de nuevo.', { 'Retry-After': String(attempt.retry_after) })
+      const result = await deps.save(data, networkHash, contactHash)
       if (result.error) {
         const message = result.error.message
         if (message.includes('E_RATE')) return reply(429, 'Has enviado varias solicitudes. Espera un momento antes de intentarlo de nuevo.')
