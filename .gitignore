@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+.supabase/
+.local-db/
+
+# Credenciales y archivos privados
+*.env
+.env.*
+!.env.example
+*contraseña*
+*contrasena*
+debug.log
+node_modules/
+dist/
+test-results/
+playwright-report/
