@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
+import { isDemo } from '../demo/mode'
 
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
-export const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? ''
-export const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY?.trim() ?? ''
+export const supabaseUrl = isDemo ? '' : import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
+export const publishableKey = isDemo ? '' : import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? ''
+export const turnstileSiteKey = isDemo ? '' : import.meta.env.VITE_TURNSTILE_SITE_KEY?.trim() ?? ''
 let validUrl = false
 try { const parsed = new URL(supabaseUrl); validUrl = parsed.protocol === 'https:' || (parsed.protocol === 'http:' && ['localhost','127.0.0.1'].includes(parsed.hostname)) } catch { /* No configuration: local preview. */ }
 

@@ -5,10 +5,29 @@ y redes sociales. Fase 3 incorpora integración Supabase, SQL transaccional, fun
 de reservas y panel administrativo en español. No hay carta, pagos, pedidos,
 notificaciones de reservas por correo ni confirmación automática.
 
-**Estado real:** código implementado y probado localmente. No hay credenciales
-configuradas, migraciones aplicadas a Supabase ni servicios desplegados. Sin
-configuración, la web muestra la vista previa y no envía reservas. Los resultados
-locales no acreditan el recorrido completo contra Supabase real. No se ha publicado.
+**Estado real:** tres migraciones y función `reserve` desplegadas en Supabase;
+reservas reales desactivadas y recorrido completo real aún pendiente. Sin
+configuración, la web muestra la vista previa y no envía reservas. No se ha
+publicado en Netlify. Existe una demo aislada, sin conexión a Supabase.
+
+## Demostración para el propietario
+
+```powershell
+npm.cmd run dev:demo
+```
+
+Abrir **http://127.0.0.1:5174** y **http://127.0.0.1:5174/admin**. No requiere
+cuenta, claves ni captcha. Usar únicamente datos ficticios. La demo reutiliza la
+landing, formulario, listado y calendario existentes y se activa solo con el
+modo de compilación `demo`, nunca mediante parámetros de URL.
+
+Incluye 4 mesas de 2, 4 de 4 y 2 de 6 personas; martes a domingo, comidas
+13:00–16:00 y cenas 20:00–23:30, reservas de 90 minutos e intervalos de 30.
+Solicitud pendiente → panel demo → confirmar/rechazar/cancelar. Datos guardados
+solo en ese navegador y origen; no se comparten entre dispositivos. El botón
+«Restablecer demo» borra exclusivamente las reservas ficticias.
+
+Guía y publicación futura, pendiente de autorización: [DEMO.md](docs/DEMO.md).
 
 ## Inicio local
 
@@ -46,6 +65,8 @@ docs/FASES.md                      Resultados y límites de cada entrega
 ```
 
 ## Configuración pública y privada
+
+Pruebas locales del lanzamiento: [Turnstile y reserve](docs/TURNSTILE-RESERVE.md).
 
 Crear `.env` a partir de `.env.example` y completar **solo**:
 
@@ -86,12 +107,20 @@ npx.cmd supabase secrets set --env-file supabase/.env
 npx.cmd supabase functions deploy reserve
 ```
 
-Seleccionar cuidadosamente el proyecto de destino y revisar las dos migraciones
+Seleccionar cuidadosamente el proyecto de destino y revisar las tres migraciones
 antes de `db push`. No ejecutar `db reset` contra una base remota ni usar estos
 archivos para reemplazar una base con datos existentes. Las migraciones están
 versionadas y crean el esquema nuevo, no son scripts para ejecutar repetidamente.
 Ver [migraciones oficiales](https://supabase.com/docs/guides/deployment/database-migrations)
 y [despliegue de funciones](https://supabase.com/docs/guides/functions/deploy).
+
+La migración aditiva `202610230003_persistent_attempt_limits.sql` debe estar
+aplicada antes de activar la función `reserve` actualizada. No reescribe 001/002.
+La función registra la cuota en una RPC independiente antes de intentar reservar;
+si falta esa RPC, rechaza el envío de forma segura. El estado remoto de las
+migraciones no se ha consultado; comprobarlo en una revisión de solo lectura
+autorizada antes de planificar su aplicación. No ejecutar estas órdenes sin
+autorización.
 
 Para un stack Supabase completamente local se necesita Docker en ejecución y
 Supabase CLI: `npx.cmd supabase start`, `npx.cmd supabase db reset` (solo local)
@@ -148,8 +177,12 @@ de reservas. Para revocar acceso: `admin_users.active=false` desde SQL privilegi
 - Ediciones administrativas usan `updated_at` para evitar sobrescribir cambios
   hechos por otra persona. Los cambios de configuración que invalidan reservas
   activas se rechazan y revierten.
-- Límites: hasta 5 solicitudes por red en 15 minutos y 3 por contacto en una hora,
-  excluidos reintentos con el mismo UUID. La cuota usa HMAC con salt privado; la
+- Límites persistentes: 15 intentos verificados por red y 6 por contacto en
+  ventanas de 15 minutos, incluidos rechazos de disponibilidad. Se registran
+  antes de reservar, por lo que un rollback de la reserva no devuelve la cuota.
+  Se mantienen los límites anteriores de reservas guardadas: 5 por red en
+  15 minutos y 3 por contacto en una hora. Solo los reintentos de una solicitud
+  ya guardada con UUID y contenido idénticos quedan exentos. La cuota usa HMAC con salt privado; la
   IP es solo una capa adicional, nunca una prueba de identidad.
 - Turnstile se valida en servidor para cada intento. La protección de origen/CORS
   no se considera autenticación. No se registran datos personales en logs.
@@ -199,9 +232,13 @@ prueba en 5173/5180; puede reutilizar la vista previa local sin credenciales.
 No se deben reutilizar servidores conectados a producción. Los valores reservados
 de fixtures no son credenciales y todas sus llamadas se interceptan.
 
-- SQL: 13 casos en PostgreSQL embebido real (PGlite); el ejecutor cuenta 14
-  resultados incluyendo el contenedor. Ejecuta ambas migraciones, restricciones,
-  disponibilidad, duplicados, estados manuales, roles/RLS, revocación y retención.
+- SQL: 24 casos en PostgreSQL embebido (PGlite); el ejecutor cuenta 26
+  resultados incluyendo los dos contenedores. Ejecuta las tres migraciones,
+  restricciones, disponibilidad, duplicados, estados manuales, roles/RLS,
+  revocación y retención. Incluye actualización con datos existentes, cuotas
+  tras rollback, reintentos idempotentes y el manejador HTTP conectado al SQL
+  local (seis rechazos 409 y después 429). Ejecutado con Node 24; la nueva suite
+  importa TypeScript mediante el soporte nativo de Node.
   El esquema Auth de la prueba es un sustituto local de `auth.uid()` y `auth.users`.
 - Playwright: regresiones de la landing conservadas; pruebas HTTP del manejador
   y pantallas con servicios interceptados. Las pruebas de login/recuperación

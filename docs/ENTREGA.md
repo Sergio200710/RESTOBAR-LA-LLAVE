@@ -39,7 +39,8 @@ cuando existan esos recursos; todavía no se ha elegido ni conectado un dominio.
 
 ## Preparación técnica previa
 
-- Aplicar ambas migraciones a un proyecto de pruebas y revisar RLS y privilegios.
+- Aplicar las tres migraciones a un proyecto de pruebas y revisar RLS y privilegios,
+  comprobando antes el historial remoto. Ver `LANZAMIENTO-MVP.md`.
 - Configurar las tres variables públicas del frontend y los secretos de Edge
   Functions indicados en README, sin mezclar claves públicas y privadas.
 - Configurar Turnstile para los hostnames permitidos y comprobar su validación

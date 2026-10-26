@@ -50,3 +50,25 @@ test('servidor: registerAttempt rechaza cuando allowed:false y no llama a save',
   expect(response.headers.get('Retry-After')).toBe('60')
   expect(saveCalled).toBe(false)
 })
+
+test('servidor: espera el registro de cuota antes de guardar y falla cerrado si no puede registrarlo',async()=>{
+  const deps=defaults(),events:string[]=[]
+  deps.registerAttempt=async()=>{events.push('registro');await Promise.resolve();events.push('registrado');return {allowed:true,retry_after:0}}
+  deps.save=async()=>{events.push('reserva');return {error:null}}
+  expect((await createReservationHandler(deps)(request())).status).toBe(200)
+  expect(events).toEqual(['registro','registrado','reserva'])
+  events.length=0
+  deps.registerAttempt=async()=>{throw new Error('private database detail')}
+  const response=await createReservationHandler(deps)(request())
+  expect(response.status).toBe(503)
+  expect(await response.text()).not.toContain('private database detail')
+  expect(events).toEqual([])
+})
+
+test('servidor: captcha rechazado no consume cuota de clientes',async()=>{
+  const deps=defaults();let attempts=0
+  deps.registerAttempt=async()=>{attempts++;return {allowed:true,retry_after:0}}
+  deps.verify=async()=>({success:false})
+  expect((await createReservationHandler(deps)(request())).status).toBe(400)
+  expect(attempts).toBe(0)
+})

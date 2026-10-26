@@ -7,5 +7,6 @@ export default defineConfig({
   webServer: process.env.LLAVE_TEST_SERVERS_MANAGED === '1' ? undefined : [
     { command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort', url: 'http://127.0.0.1:5173', reuseExistingServer: !process.env.CI },
     { command: 'node tests/fixtures/configured-server.mjs', url: 'http://127.0.0.1:5180', reuseExistingServer: !process.env.CI },
+    { command: 'node node_modules/vite/bin/vite.js --mode demo --host 127.0.0.1 --port 5190 --strictPort', url: 'http://127.0.0.1:5190', reuseExistingServer: !process.env.CI },
   ],
 })

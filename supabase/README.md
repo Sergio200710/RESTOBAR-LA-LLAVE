@@ -6,6 +6,11 @@ Migraciones en orden:
    transaccionales de disponibilidad y edición.
 2. `202610230002_admin_queries.sql`: listado paginado, dashboard y calendario
    autorizados exclusivamente para administradores.
+3. `202610230003_persistent_attempt_limits.sql`: cuota de intentos en una RPC
+   independiente, persistente aunque la creación de reserva haga rollback.
+
+Inventario remoto de solo lectura preparado en `checks/launch-readonly.sql`.
+Plan de activación y autorizaciones: `../docs/LANZAMIENTO-MVP.md`.
 
 No se han aplicado a un proyecto remoto. `npm.cmd run test:db` las aplica y prueba
 en PostgreSQL embebido con un sustituto local mínimo del esquema Auth.

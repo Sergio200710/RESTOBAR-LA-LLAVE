@@ -46,6 +46,15 @@ async function login(page:Page){
   await page.getByRole('button',{name:'Entrar',exact:true}).click()
 }
 
+test('producción: URL y almacenamiento de demo no permiten acceder al panel privado',async({page})=>{
+  const calls=await backend(page)
+  await page.addInitScript(()=>localStorage.setItem('la-llave:demo:reservations:v1','[]'))
+  await page.goto('/admin?demo=1')
+  await expect(page.getByRole('button',{name:'Entrar',exact:true})).toBeVisible()
+  await expect(page.getByText('PANEL DEMO · Sin acceso a reservas reales')).toHaveCount(0)
+  expect(calls.some(call=>call.name==='admin_reservations')).toBe(false)
+})
+
 test('cliente: solicitud pendiente y doble clic sin duplicar envío (servicios simulados)',async({page})=>{
   const calls=await backend(page);await page.goto('/#reservar')
   await expect(page.getByText('Tu solicitud quedará pendiente de confirmación')).toBeVisible()
@@ -151,3 +160,27 @@ test('admin: nueva contraseña y regreso al acceso habitual (servicios simulados
   await expect(page).toHaveURL(/\/admin$/)
   await expect(page.getByRole('button',{name:'Entrar',exact:true})).toBeVisible()
 })
+
+for(const failure of ['provider','network'] as const){
+  test(`admin: recuperación ${failure} fallida elimina éxito previo y permite iniciar sesión`,async({page})=>{
+    await backend(page);await page.goto('/admin')
+    await page.getByText('He olvidado mi contraseña',{exact:true}).click()
+    const email=page.getByLabel('Correo de recuperación'),submit=page.getByRole('button',{name:'Solicitar enlace seguro'})
+    await email.fill('owner@example.invalid');await submit.click()
+    await expect(page.locator('.auth-panel [role=status]')).toContainText('Si el correo corresponde')
+    await page.route('https://supabase.example.invalid/auth/v1/recover**',async route=>{
+      if(failure==='network')return route.abort('failed')
+      return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({code:'user_not_found',msg:'PRIVATE: account does not exist'})})
+    })
+    for(const address of ['owner@example.invalid','absent@example.invalid']){
+      await email.fill(address);await submit.click()
+      await expect(page.getByRole('alert')).toHaveText('No se pudo tramitar la recuperación. Inténtalo más tarde.')
+      await expect(page.locator('.auth-panel [role=status]')).toHaveCount(0)
+      await expect(submit).toBeEnabled()
+    }
+    await page.getByLabel('Correo electrónico',{exact:true}).fill('owner@example.invalid')
+    await page.getByLabel('Contraseña',{exact:true}).fill('TEST_ONLY_PASSWORD_NOT_REAL')
+    await page.getByRole('button',{name:'Entrar',exact:true}).click()
+    await expect(page.getByRole('heading',{name:'Cliente de prueba'})).toBeVisible()
+  })
+}

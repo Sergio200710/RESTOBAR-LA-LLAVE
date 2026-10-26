@@ -4,6 +4,8 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { friendlyError, madridDay, madridTime, rpc, statuses, weekdays, type CalendarCount, type Closure, type OpeningHours, type ReservationRow, type RestaurantSettings, type RestaurantTable } from '../lib/reservations'
 import './admin.css'
+import { isDemo } from '../demo/mode'
+import { DEMO_CHANGED, DEMO_STORAGE, demoConfig, demoTables, demoHours } from '../demo/store'
 
 function MissingConfiguration() {
   return <div className="section admin-page"><p className="eyebrow">ACCESO PRIVADO</p><h1>Administración</h1><div className="notice"><h2>Panel pendiente de conexión segura</h2><p>El servicio todavía no está configurado. No se muestran datos ni se permiten operaciones administrativas.</p></div><p>Cuando se active la conexión segura, podrás:</p><ul><li>Consultar solicitudes pendientes.</li><li>Confirmar, rechazar y cancelar reservas.</li><li>Consultar el calendario.</li><li>Configurar horarios y disponibilidad de mesas.</li></ul><Link className="button" to="/">Volver a la web</Link></div>
@@ -77,7 +79,7 @@ export default function Admin() {
     <Link className="text-link" to="/">Volver a la web</Link></div></div>
 }
 
-function Dashboard({ email,authError,onSignOut,onRevoked }: { email:string;authError:string;onSignOut:()=>Promise<void>;onRevoked:()=>void }) {
+export function Dashboard({ email,authError,onSignOut,onRevoked }: { email:string;authError:string;onSignOut:()=>Promise<void>;onRevoked:()=>void }) {
   const [tab,setTab]=useState('reservas'),[rows,setRows]=useState<ReservationRow[]>([]),[total,setTotal]=useState(0),[offset,setOffset]=useState(0)
   const [date,setDate]=useState(''),[status,setStatus]=useState(''),[search,setSearch]=useState(''),[query,setQuery]=useState('')
   const [counts,setCounts]=useState<Record<string,number>>({}),[calendar,setCalendar]=useState<CalendarCount[]>([]),[month,setMonth]=useState(madridDay().slice(0,7))
@@ -86,7 +88,7 @@ function Dashboard({ email,authError,onSignOut,onRevoked }: { email:string;authE
   const [confirm,setConfirm]=useState<{row:ReservationRow;status:string}|null>(null)
   const loadVersion=useRef(0)
   const load=useCallback(async()=>{
-    if(!supabase)return
+    if(!supabase&&!isDemo)return
     const version=++loadVersion.current
     setLoading(true);setError('')
     try{
@@ -94,8 +96,8 @@ function Dashboard({ email,authError,onSignOut,onRevoked }: { email:string;authE
       const [list,dashboard,cal,t,h,c,s]=await Promise.all([
         rpc<{items:ReservationRow[];total:number}>('admin_reservations',{p_date:date||null,p_status:status||null,p_search:query,p_offset:offset}),
         rpc<Record<string,number>>('admin_dashboard'),rpc<CalendarCount[]>('admin_calendar',{p_month:`${month}-01`}),
-        supabase.from('restaurant_tables').select('*').order('name'),supabase.from('opening_hours').select('*').order('weekday').order('opens'),
-        supabase.from('exceptional_closures').select('*').order('starts_on'),supabase.from('restaurant_settings').select('*').single(),
+        isDemo ? {data:demoTables,error:null} : supabase!.from('restaurant_tables').select('*').order('name'),isDemo ? {data:demoHours,error:null} : supabase!.from('opening_hours').select('*').order('weekday').order('opens'),
+        isDemo ? {data:[] as Closure[],error:null} : supabase!.from('exceptional_closures').select('*').order('starts_on'),isDemo ? {data:{...demoConfig,id:1,reservations_enabled:true,retention_days:90},error:null} : supabase!.from('restaurant_settings').select('*').single(),
       ])
       for(const result of [t,h,c,s])if(result.error)throw result.error
       if(version!==loadVersion.current)return
@@ -103,6 +105,13 @@ function Dashboard({ email,authError,onSignOut,onRevoked }: { email:string;authE
     }catch(value){if(version===loadVersion.current){setRows([]);setError(friendlyError(value))}}finally{if(version===loadVersion.current)setLoading(false)}
   },[date,status,query,offset,month])
   useEffect(()=>{void load()},[load])
+  useEffect(()=>{
+    if(!isDemo)return
+    const refresh=()=>{void load()}
+    const storage=(event:StorageEvent)=>{if(event.key===DEMO_STORAGE||event.key===null)refresh()}
+    window.addEventListener(DEMO_CHANGED,refresh);window.addEventListener('storage',storage)
+    return()=>{window.removeEventListener(DEMO_CHANGED,refresh);window.removeEventListener('storage',storage)}
+  },[load])
   useEffect(()=>{const timer=setTimeout(()=>{setOffset(0);setQuery(search)},300);return()=>clearTimeout(timer)},[search])
   useEffect(()=>{if(selected||confirm){const element=document.querySelector<HTMLElement>('.action-confirmation, .edit-reservation');element?.scrollIntoView({block:'center'});element?.focus({preventScroll:true})}},[selected,confirm])
   const mutate=async(operation:()=>Promise<unknown>,success:string)=>{
@@ -119,13 +128,13 @@ function Dashboard({ email,authError,onSignOut,onRevoked }: { email:string;authE
     {loading&&<p role="status">Cargando datos…</p>}
     {tab==='reservas'&&<><div className="reservation-filters"><label>Buscar cliente<input type="search" value={search} onChange={event=>setSearch(event.target.value)} maxLength={100} placeholder="Nombre del cliente" /></label><label>Fecha<input type="date" value={date} onChange={event=>{setDate(event.target.value);setOffset(0)}} /></label><label>Estado<select value={status} onChange={event=>{setStatus(event.target.value);setOffset(0)}}><option value="">Todos</option>{statuses.map(value=><option key={value}>{value}</option>)}</select></label><button className="button secondary" onClick={()=>{setDate('');setStatus('');setSearch('');setOffset(0)}}>Limpiar filtros</button></div>
       {!loading&&!rows.length&&<p className="empty-state">No hay reservas que coincidan con estos filtros.</p>}
-      <div className="reservation-list">{rows.map(row=><article className="reservation-card" key={row.id}><div className="reservation-card-heading"><h2>{row.customer_name}</h2><span className={`badge ${row.status.toLowerCase()}`}>{row.status}</span></div><p><strong>{madridDay(new Date(row.starts_at))} · {madridTime(row.starts_at)}</strong> · {row.guests} comensales</p><p>Mesa: {tables.find(table=>table.id===row.table_id)?.name ?? 'Asignada'}</p><a className="text-link" href={`tel:${row.phone}`}>{row.phone}</a>{row.notes&&<p className="reservation-notes">{row.notes}</p>}<div className="card-actions"><button className="button secondary" onClick={()=>{setSelected(row);setConfirm(null)}}>Ver detalles{['PENDIENTE','CONFIRMADA'].includes(row.status)?' / Modificar':''}</button>{row.status==='PENDIENTE'&&<><button className="button" disabled={busy} onClick={()=>setConfirm({row,status:'CONFIRMADA'})}>Confirmar</button><button className="button danger" disabled={busy} onClick={()=>setConfirm({row,status:'RECHAZADA'})}>Rechazar</button></>}{['PENDIENTE','CONFIRMADA'].includes(row.status)&&<button className="button danger" disabled={busy} onClick={()=>setConfirm({row,status:'CANCELADA'})}>Cancelar</button>}</div></article>)}</div>
+      <div className="reservation-list">{rows.map(row=><article className="reservation-card" key={row.id}><div className="reservation-card-heading"><h2>{row.customer_name}</h2><span className={`badge ${row.status.toLowerCase()}`}>{row.status}</span></div><p><strong>{madridDay(new Date(row.starts_at))} · {madridTime(row.starts_at)}</strong> · {row.guests} comensales</p><p>Mesa: {tables.find(table=>table.id===row.table_id)?.name ?? 'Asignada'}</p>{isDemo ? <span>Tel?fono ficticio: {row.phone}</span> : <a className="text-link" href={`tel:${row.phone}`}>{row.phone}</a>}{row.notes&&<p className="reservation-notes">{row.notes}</p>}<div className="card-actions"><button className="button secondary" onClick={()=>{setSelected(row);setConfirm(null)}}>Ver detalles{['PENDIENTE','CONFIRMADA'].includes(row.status)?' / Modificar':''}</button>{row.status==='PENDIENTE'&&<><button className="button" disabled={busy} onClick={()=>setConfirm({row,status:'CONFIRMADA'})}>Confirmar</button><button className="button danger" disabled={busy} onClick={()=>setConfirm({row,status:'RECHAZADA'})}>Rechazar</button></>}{['PENDIENTE','CONFIRMADA'].includes(row.status)&&<button className="button danger" disabled={busy} onClick={()=>setConfirm({row,status:'CANCELADA'})}>Cancelar</button>}</div></article>)}</div>
       {total>0&&<div className="pagination"><button className="button secondary" disabled={!offset||loading} onClick={()=>setOffset(Math.max(0,offset-50))}>Anteriores</button><span>{offset+1}–{Math.min(offset+50,total)} de {total}</span><button className="button secondary" disabled={offset+50>=total||loading} onClick={()=>setOffset(offset+50)}>Siguientes</button></div>}
     </>}
     {confirm&&<div className="action-confirmation" tabIndex={-1} role="region" aria-label="Confirmar cambio de estado"><h2>{confirm.status==='CONFIRMADA'?'Confirmar reserva':confirm.status==='RECHAZADA'?'Rechazar solicitud':'Cancelar reserva'}</h2><p>{confirm.row.customer_name} · {madridDay(new Date(confirm.row.starts_at))} · {madridTime(confirm.row.starts_at)} · {confirm.row.guests} comensales</p><p>{confirm.status==='CONFIRMADA'?'Se comprobará otra vez la disponibilidad antes de confirmar.':'La mesa quedará disponible para otras solicitudes.'}</p><button className="button" disabled={busy} onClick={()=>void mutate(()=>update(confirm.row,confirm.status),'Estado de la reserva actualizado.')}>Sí, guardar cambio</button> <button className="button secondary" disabled={busy} onClick={()=>setConfirm(null)}>Volver</button></div>}
     {selected&&<div className="edit-reservation" tabIndex={-1} key={selected.updated_at}><h2>Detalles de la reserva</h2><p>{selected.customer_name} · {selected.phone}</p><p>{selected.notes||'Sin observaciones.'}</p><p>Estado: {selected.status}</p>{['PENDIENTE','CONFIRMADA'].includes(selected.status)&&<form onSubmit={event=>{event.preventDefault();const values=new FormData(event.currentTarget);void mutate(()=>update(selected,selected.status,String(values.get('date')),String(values.get('time')),Number(values.get('guests'))),'Reserva modificada.')}}><div className="form-grid"><label>Modificar fecha<input name="date" type="date" defaultValue={madridDay(new Date(selected.starts_at))} required /></label><label>Modificar hora<input name="time" type="time" defaultValue={madridTime(selected.starts_at)} required /></label><label>Modificar comensales<input name="guests" type="number" min={1} max={100} step={1} defaultValue={selected.guests} required /></label></div><p>Se comprobarán horarios, capacidad y posibles conflictos al guardar.</p><button className="button" disabled={busy}>Guardar cambios</button></form>}<button className="text-button" onClick={()=>setSelected(null)}>Cerrar detalles</button></div>}
     {tab==='calendario'&&<Calendar month={month} counts={calendar} onMonth={setMonth} onDay={day=>{setDate(day);setStatus('');setOffset(0);setTab('reservas')}} />}
-    {tab==='configuracion'&&settings&&<Configuration tables={tables} hours={hours} closures={closures} settings={settings} busy={busy} save={saveConfig} />}
+    {tab==='configuracion'&&settings&&(isDemo ? <div className="notice"><h2>Configuración ficticia de demostración</h2><p>Martes a domingo · Comidas 13:00–16:00 · Cenas 20:00–23:30.</p><p>Reservas de 90 minutos · Intervalos de 30 minutos. Sin combinación de mesas. Los turnos deben terminar antes del cierre.</p>{tables.map(table=><p key={table.id}>{table.name} · {table.capacity} personas</p>)}<p>Estos datos son provisionales y no modifican el restaurante real.</p></div> : <Configuration tables={tables} hours={hours} closures={closures} settings={settings} busy={busy} save={saveConfig} />)}
   </div>
 }
 

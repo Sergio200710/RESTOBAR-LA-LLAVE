@@ -5,6 +5,8 @@ import { SocialButtons } from './components/SocialButtons'
 import Admin from './admin/Admin'
 import { ReservationForm } from './components/ReservationForm'
 import { supabase } from './lib/supabase'
+import { isDemo } from './demo/mode'
+import DemoAdmin from './demo/DemoAdmin'
 
 function Logo() {
   return <img className="logo" src="/images/logo-actual.jpg" alt="La Llave Tapas" width="90" height="117" />
@@ -56,5 +58,5 @@ function Footer() {
 }
 
 export function App() {
-  return <><PageNavigation /><a className="skip-link" href="#contenido">Saltar al contenido</a><div className="status" role="status">{supabase ? 'Las solicitudes de reserva requieren confirmación manual del restaurante.' : 'Vista previa · Las reservas online aún no están disponibles.'}</div><Header /><main id="contenido" tabIndex={-1}><Routes><Route path="/" element={<Landing />} /><Route path="/admin/*" element={<Admin />} /><Route path="/carta" element={<Navigate to="/#platos" replace />} /><Route path="/reservar" element={<Navigate to="/#reservar" replace />} /><Route path="/contacto" element={<Navigate to="/#redes" replace />} /><Route path="*" element={<div className="section admin-page"><p className="eyebrow">404</p><h1>Página no encontrada</h1><Link className="button" to="/">Volver al inicio</Link></div>} /></Routes></main><Footer /></>
+  return <><PageNavigation /><a className="skip-link" href="#contenido">Saltar al contenido</a><div className="status" role="status">{isDemo ? <>DEMOSTRACIÓN · Reservas ficticias, sin conexión a Supabase. No uses datos personales. <Link to="/admin">Ver panel demo</Link></> : supabase ? 'Las solicitudes de reserva requieren confirmación manual del restaurante.' : 'Vista previa · Las reservas online aún no están disponibles.'}</div><Header /><main id="contenido" tabIndex={-1}><Routes><Route path="/" element={<Landing />} /><Route path="/admin/*" element={isDemo ? <DemoAdmin /> : <Admin />} /><Route path="/carta" element={<Navigate to="/#platos" replace />} /><Route path="/reservar" element={<Navigate to="/#reservar" replace />} /><Route path="/contacto" element={<Navigate to="/#redes" replace />} /><Route path="*" element={<div className="section admin-page"><p className="eyebrow">404</p><h1>Página no encontrada</h1><Link className="button" to="/">Volver al inicio</Link></div>} /></Routes></main><Footer /></>
 }

@@ -5,11 +5,14 @@
   "description": "Web y gestión de reservas de RESTOBAR LA LLAVE",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:demo": "vite --mode demo --host 127.0.0.1 --port 5174 --strictPort",
     "build": "tsc --noEmit && vite build",
+    "build:demo": "tsc --noEmit && vite build --mode demo --outDir dist-demo",
+    "preview:demo": "vite preview --outDir dist-demo --host 127.0.0.1 --port 5174 --strictPort",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test:e2e": "node tests/run-browser-tests.mjs",
-    "test:db": "node --test tests/db/reservations.test.mjs"
+    "test:db": "node --test tests/db/reservations.test.mjs tests/db/attempt-limits.test.mjs"
   },
   "keywords": [],
   "author": "",

@@ -1,11 +1,13 @@
 node_modules/
 dist/
+dist-demo/
 .env
 .env.*
 !.env.example
 playwright-report/
 test-results/
 .supabase/
+supabase/.temp/
 .local-db/
 
 # Credenciales y archivos privados

@@ -1,5 +1,116 @@
 # Registro de fases
 
+## Demo funcional aislada para el propietario — 26/10/2026
+
+Se revisaron y reutilizaron la landing, fotografías, formulario, validación de
+datos, tipos de reservas, dashboard, filtros, calendario y cambios de estado.
+Se añadió un adaptador local en src/demo, sin reconstruir esas pantallas ni
+modificar estilos o fotografías. El build normal conserva Auth y Supabase;
+solo el modo de compilación demo habilita el panel ficticio sin cuenta.
+
+Configuración ficticia solicitada: 4 mesas de 2, 4 de 4 y 2 de 6 personas;
+martes a domingo, 13:00–16:00 y 20:00–23:30, duración 90 min, intervalos 30 min.
+localStorage exclusivo del origen demo, persistencia al recargar, cambios entre
+pestañas y reset limitado a datos demo. Banner y mensajes identifican las
+reservas como ficticias. Sin Auth, Turnstile ni solicitudes a Supabase en demo.
+La demo no permite acceder a reservas reales ni comparte datos entre dispositivos.
+
+Comprobaciones ejecutadas y superadas:
+
+- TypeScript y builds normal y demo; Vite mantiene el aviso de bundle >500 kB.
+- 50 pruebas Playwright: las 41 anteriores, 8 de demo y una de protección del
+  acceso normal frente a URL/almacenamiento demo. Recorrido completo a
+  320/390/768/1440 px, persistencia, confirmación, cancelación, rechazo, filtros,
+  calendario, disponibilidad, duplicados, reset y actualización entre pestañas.
+- 24 casos SQL locales (26 resultados contando contenedores), sin tocar remoto.
+- Paquete estático dist-demo probado con Chromium: acceso directo a /admin,
+  solicitud y confirmación ficticias, cero solicitudes al backend.
+- Build demo sin URL ni claves reales; producción sin almacén demo. SPA y
+  noindex solo en dist-demo. Capturas revisadas y git diff --check correcto.
+
+Los primeros intentos de pruebas se corrigieron: el detector de aislamiento
+confundía el módulo local supabase.ts con una llamada externa y un selector de
+filtro era demasiado estricto. La comprobación adicional por PowerShell usó
+selectores estructurales para evitar problemas de codificación de acentos.
+Los resultados anteriores corresponden a las ejecuciones finales correctas.
+
+No se han hecho operaciones remotas, despliegues, git push ni activación de
+reservas reales durante este trabajo. Para probar: npm.cmd run dev:demo,
+http://127.0.0.1:5174 y /admin. Para compartir, falta autorizar un sitio Netlify
+separado, publicar dist-demo y comprobar su URL. Guía: docs/DEMO.md.
+
+Este apartado prevalece como estado de la demostración; no declara terminada
+la prueba de reservas reales de los apartados siguientes.
+
+## Preparación del frontend real — 26/10/2026
+
+Claves públicas presentes y con formato válido. Se corrigió la URL pública
+local al proyecto `bdgtlonduwffyxvkcadi`, conservando las claves sin mostrarlas.
+RPC pública real 200; `reserve` con clave publicable y JSON vacío 400 con CORS
+correcto. Chromium sin interceptar Supabase: RPC 200, formulario bloqueado,
+/admin accesible y móvil de 390 px sin desbordamiento. No se ha enviado reserva.
+Auth tiene correo activo pero registro público aún habilitado. Cero admins,
+mesas y franjas activas, privacidad pendiente y reservas desactivadas.
+No se modificó la configuración remota, no se crearon usuarios, no hubo git push
+ni Netlify. Datos necesarios y plan en docs/PRUEBA-RESERVAS-REALES.md.
+Este estado sustituye la mención anterior a claves públicas pendientes.
+
+## Lanzamiento — Edge Function desplegada el 26/10/2026
+
+Con autorización expresa se configuraron exclusivamente TURNSTILE_SECRET_KEY,
+ALLOWED_ORIGINS y RATE_LIMIT_SALT y se desplegó únicamente `reserve` en
+`bdgtlonduwffyxvkcadi`. Valores secretos no mostrados. Estado remoto ACTIVE,
+versión 1. Pruebas HTTP del endpoint: CORS local 204, JSON vacío 400, origen
+ajeno 403. Reservas siguen desactivadas; sin Netlify ni git push.
+No se ha probado aún la creación de una reserva real ni Turnstile con token real.
+Pendientes: clave publicable y Site key del frontend, cuenta administrativa, mesas/horarios,
+privacidad y autorización para habilitar pruebas. Ver docs/TURNSTILE-RESERVE.md.
+
+## Correcciones de seguridad — verificación local del 26/10/2026
+
+Se conserva el commit local `cac8182` de Claude Code. Al retomar el trabajo no
+había cambios sin guardar. Están completas y son coherentes la recuperación de
+`Admin.tsx`, la llamada previa de `reserve-handler.ts`, su implementación en
+`reserve/index.ts` y la migración aditiva `202610230003_persistent_attempt_limits.sql`.
+No se han reescrito esas correcciones ni las migraciones anteriores.
+
+La recuperación comprueba el error devuelto por Supabase, limpia éxitos previos
+y muestra errores genéricos sin revelar si existe la cuenta. Los intentos se
+contabilizan en una transacción RPC independiente de la reserva; rechazar esta
+última no revierte la cuota. El bloqueo transaccional serializa la comprobación
+y el incremento. Solo `service_role` puede registrar intentos. Los reintentos
+de solicitudes ya guardadas con contenido idéntico no duplican ni consumen cuota.
+
+Añadido `tests/db/attempt-limits.test.mjs`, integrado en `test:db`, y regresiones
+en `tests/e2e/admin-contract.spec.ts` y `tests/e2e/service-handler.spec.ts`.
+Actualizados README y este registro. Sin cambios de landing, imágenes o estilos.
+
+Pruebas ejecutadas y superadas:
+
+- `npm.cmd run typecheck` y `npm.cmd run build`.
+- `npm.cmd run test:db`: 24 casos SQL; 26 resultados contando dos contenedores.
+  Incluye migración sobre datos existentes, rollback por falta de disponibilidad,
+  fechas/horas inválidas, cuotas por red/contacto, expiración, permisos, retención
+  y ocho reintentos idempotentes sin duplicados incluso con cuota agotada.
+- `npm.cmd run test:e2e`: 41 pruebas, incluidas recuperación con error devuelto
+  y fallo de red, inicio de sesión posterior, registro previo de cuota, fallo
+  cerrado del registro, imágenes originales y responsive a 320/390/768/1440 px.
+
+Límites: PGlite serializa las llamadas en una única conexión; las llamadas
+solapadas locales no acreditan concurrencia entre sesiones independientes.
+Auth/Turnstile del navegador están interceptados. No se ha ejecutado GoTrue
+real, envío de correos ni comprobación Deno en esta revisión.
+
+Pendiente, siempre con autorización: consultar en solo lectura el historial
+remoto; después planificar la aplicación de 003 y el despliegue compatible de
+`reserve`, y validar concurrencia, RLS vía REST y recuperación reales en un
+proyecto de pruebas. Verificar también configuración real de Supabase,
+Turnstile, orígenes, redirección Auth, administrador y mesas/horarios antes de
+activar reservas. No se han consultado secretos, aplicado migraciones remotas,
+desplegado funciones, publicado en Netlify ni realizado `git push`.
+
+Este apartado prevalece sobre los recuentos históricos siguientes.
+
 ## Fase 3 — Reservas y administración segura
 
 Estado: implementación local terminada; activación en Supabase y aceptación del

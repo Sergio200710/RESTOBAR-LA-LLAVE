@@ -1,4 +1,6 @@
 import { supabase } from './supabase'
+import { isDemo } from '../demo/mode'
+import { demoRpc } from '../demo/store'
 
 export const statuses = ['PENDIENTE','CONFIRMADA','RECHAZADA','CANCELADA'] as const
 export type ReservationStatus = typeof statuses[number]
@@ -18,6 +20,7 @@ export interface CalendarCount { day: string; status: ReservationStatus; count: 
 
 export function friendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : ''
+  if (message.includes('E_DEMO_STORAGE')) return 'No se pueden leer los datos de demostración. Restablece la demo para continuar.'
   if (message.includes('E_FORBIDDEN')) return 'No tienes autorización para realizar esta operación.'
   if (message.includes('E_STALE')) return 'Otra persona ha cambiado esta reserva. Actualiza el listado antes de continuar.'
   if (message.includes('E_BOOKED_CONFIG')) return 'Este cambio afecta a reservas pendientes o confirmadas. Revísalas antes de cambiar la configuración.'
@@ -28,6 +31,7 @@ export function friendlyError(error: unknown) {
   return 'No se pudo completar la operación. Comprueba tu conexión y vuelve a intentarlo.'
 }
 export async function rpc<T>(name: string, parameters?: Record<string, unknown>): Promise<T> {
+  if (isDemo) return demoRpc<T>(name,parameters)
   if (!supabase) throw new Error('Servicio no configurado')
   const { data, error } = await supabase.rpc(name, parameters).abortSignal(AbortSignal.timeout(15000))
   if (error) throw error
